@@ -1,11 +1,14 @@
 from flask import Flask, render_template, request, jsonify
 import pandas as pd
 import pymysql
+import numpy as np
 from sqlalchemy import create_engine
 import pymongo
 import dns
 import json
 import os
+from scipy.sparse import csr_matrix
+from sklearn.neighbors import NearestNeighbors
 
 app = Flask(__name__)
 """gunicorn_error_logger = logging.getLogger('gunicorn.error')
@@ -61,7 +64,7 @@ def create_mongo_connection(mongo_info):
     database = client[mongo_database]
     coleccion = database[mongo_collection]
 
-    return coleccion
+    return database
 
 
 
@@ -83,14 +86,30 @@ def create_mysql_connection(mysql_info):
 
 
 app.logger.info('App root path: ' + app.root_path)
-coleccion_mongo = create_mongo_connection(get_file_creds("mongo_info.txt"))
+database_mongo = create_mongo_connection(get_file_creds("mongo_info.txt"))
 conexion_mysql = create_mysql_connection(get_file_creds("mysql_info.txt"))
 
 @app.route('/', methods=['GET'])
 def home():
     return render_template('index.html')
 
+@app.route('/api/recommend/users/<int:id_usuario>', methods=['GET'])
+def recommend(id_usuario):
+    coleccion_users = database_mongo["usuarios"]
+    coleccion_info_users = database_mongo["infotestafinidads"]
+    query_user = { "id_usuario":  id_usuario}
+    info_user_doc = coleccion_info_users.find(query_user)
 
+    user_doc = coleccion_users.find_one( query_user, {"_id" : 0, "password" : 0} )
+    info_doc = coleccion_info_users.find_one(query_user, {"_id": 0})
+
+    response = user_doc.copy()
+    response.update(info_doc)
+    # insertar usuario en mysql-analitico
+    # generar dataframe
+
+    # recomendacion
+    return jsonify(response)
 
 
 
