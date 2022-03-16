@@ -9,6 +9,8 @@ import json
 import os
 from scipy.sparse import csr_matrix
 from sklearn.neighbors import NearestNeighbors
+import mysql_docs_ops as analitico
+import atlas_docs_ops as atlas
 
 app = Flask(__name__)
 """gunicorn_error_logger = logging.getLogger('gunicorn.error')
@@ -56,13 +58,13 @@ def create_mongo_connection(mongo_info):
     mongo_password = mongo_info["mongo_password"]
     mongo_host = mongo_info["mongo_host"]
     mongo_database = mongo_info["mongo_database"]
-    mongo_collection = mongo_info["mongo_collection"]
+
 
     atlas_conn_string = "mongodb+srv://{usuario}:{password}@{host}/{database}?retryWrites=true&w=majority".format(usuario=mongo_user, password=mongo_password, host=mongo_host, database=mongo_database)
 
     client = pymongo.MongoClient(atlas_conn_string) 
     database = client[mongo_database]
-    coleccion = database[mongo_collection]
+
 
     return database
 
@@ -109,45 +111,17 @@ def obtener_usuarios_similares(matrix_df, knn_model, user, n=5):
 
 def ejecutar_recomendacion(conexion_mysql, id_usuario, num_recomendaciones ):
     matrix_df = get_datos_mysql(conexion_mysql)
-    columns_to_drop = [ 'users_name',
-                        'users_last_name',
-                        'users_last_name_2',
-                        'users_initial',
-                        'users_years',
-                        'users_gender',
-                        'users_sector',
-                        'users_ccaa',
-                        'users_prov',
-                        'users_prox',
-                        'users_phone',
-                        'users_mail',
-                        'users_lang',
-                        'users_lgtb',
-                        'users_family',
-                        'users_relig',
-                        'users_politic',
-                        'users_vegan',
-                        'users_pets',
-                        'users_smoke',
-                        'users_env',
-                        'users_range',
-                        'users_budget',
-                        'users_sqr_m',
-                        'users_bath',
-                        'users_outs',
-                        'users_facil',
-                        'users_drive',
-                        'users_max_p']
-    matrix_df.drop(columns_to_drop, axis=1, inplace=True)
+    #columns_to_drop = [ ]
+    #matrix_df.drop(columns_to_drop, axis=1, inplace=True)
     df = pd.melt(matrix_df,
-                 id_vars='users_id',
+                 id_vars='id_usuario',
                  value_vars=list(matrix_df.columns[1:]),
                  var_name='Aficiones',
                  value_name='Valoracion')
 
     # usamos pivot de pandas y creamos matriz aficiones - usuario
     matrix_df = df.pivot(
-        index='users_id',
+        index='id_usuario',
         columns='Aficiones',
         values='Valoracion').fillna(0)
 
@@ -166,16 +140,34 @@ app.logger.info('App root path: ' + app.root_path)
 database_mongo = create_mongo_connection(get_file_creds("mongo_info.txt"))
 conexion_mysql = create_mysql_connection(get_file_creds("mysql_info.txt"))
 
+mongo_info=get_file_creds("mongo_info.txt")
+mongo_collection_usuarios = mongo_info["mongo_collection_usuarios"]
+mongo_collection_afinidades = mongo_info["mongo_collection_afinidades"]
+coleccion_usuarios = database_mongo[mongo_collection_usuarios]
+coleccion_afinidades = database_mongo[mongo_collection_afinidades]
+
 @app.route('/', methods=['GET'])
 def home():
     return render_template('index.html')
 
 @app.route('/api/recommend/users/<int:id_usuario>', methods=['GET'])
 def recommend(id_usuario):
-    response = ejecutar_recomendacion(conexion_mysql, id_usuario, 10)
+    response = ejecutar_recomendacion(conexion_mysql, id_usuario, 30)
     return jsonify(response)
 
-
+@app.route('/api/recommend/users/update/<int:id_usuario>', methods=['GET'])
+def update_user(id_usuario):
+    response = {}
+    docs_mongo = atlas.get_user_docs_from_mongo(coleccion_usuarios, coleccion_afinidades, id_usuario)
+    if len(docs_mongo) > 0:
+        if analitico.check_id_usuario(conexion_mysql, 'users', docs_mongo[0]):
+            analitico.limpiar_datos_usuario(conexion_mysql, 'users', docs_mongo[1])
+            analitico.update_mysql_mongo_user(conexion_mysql, 'users', docs_mongo[1], False)
+        else:
+            analitico.insert_mysql_mongo_user(conexion_mysql, 'users', docs_mongo[1])
+            analitico.update_mysql_mongo_user(conexion_mysql, 'users', docs_mongo[1], False)
+        response = ejecutar_recomendacion(conexion_mysql, id_usuario, 30)
+    return jsonify(response)
 
 if __name__ == "__main__":
     app.run()
