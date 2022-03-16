@@ -85,6 +85,83 @@ def create_mysql_connection(mysql_info):
     return connection
 
 
+def get_datos_mysql(conexion_mysql):
+    df =pd.read_sql("select * from users", conexion_mysql);
+    #print(df.to_json(orient='index'))
+    return df
+
+
+def obtener_usuarios_similares(matrix_df, knn_model, user, n=5):
+    # input a esta función es el ID del usuario y el número de top usuarios que quieres que el modelo considere
+    # número de usuarios se traduce en el valor que asignamos a n aquí
+    knn_input = np.asarray([matrix_df.values[user - 1]])
+    distances, indices = knn_model.kneighbors(knn_input, n_neighbors=n + 1)
+    result = {}
+    ids_usuario = []
+
+    for i in range(1, len(distances[0])):
+        ids_usuario.append(indices[0][i] + 1)
+
+    for i, id in enumerate(ids_usuario):
+        result[str(i+1)] = str(id)
+
+    return result
+
+def ejecutar_recomendacion(conexion_mysql, id_usuario, num_recomendaciones ):
+    matrix_df = get_datos_mysql(conexion_mysql)
+    columns_to_drop = [ 'users_name',
+                        'users_last_name',
+                        'users_last_name_2',
+                        'users_initial',
+                        'users_years',
+                        'users_gender',
+                        'users_sector',
+                        'users_ccaa',
+                        'users_prov',
+                        'users_prox',
+                        'users_phone',
+                        'users_mail',
+                        'users_lang',
+                        'users_lgtb',
+                        'users_family',
+                        'users_relig',
+                        'users_politic',
+                        'users_vegan',
+                        'users_pets',
+                        'users_smoke',
+                        'users_env',
+                        'users_range',
+                        'users_budget',
+                        'users_sqr_m',
+                        'users_bath',
+                        'users_outs',
+                        'users_facil',
+                        'users_drive',
+                        'users_max_p']
+    matrix_df.drop(columns_to_drop, axis=1, inplace=True)
+    df = pd.melt(matrix_df,
+                 id_vars='users_id',
+                 value_vars=list(matrix_df.columns[1:]),
+                 var_name='Aficiones',
+                 value_name='Valoracion')
+
+    # usamos pivot de pandas y creamos matriz aficiones - usuario
+    matrix_df = df.pivot(
+        index='users_id',
+        columns='Aficiones',
+        values='Valoracion').fillna(0)
+
+    # transformar matriz en scipy sparse
+    # se pueden usar en operaciones aritméticasm admiten sumas, restas, multiplicaciones, divisiones y potencia de matrices
+    # csr_matrix viene de Compressed Sparse Row matrix
+    matrix_sparse_df = csr_matrix(matrix_df.values)
+
+    knn_model = NearestNeighbors(metric='cosine', algorithm='brute')
+    knn_model.fit(matrix_sparse_df)
+
+    return obtener_usuarios_similares(matrix_df, knn_model, id_usuario, num_recomendaciones)
+
+
 app.logger.info('App root path: ' + app.root_path)
 database_mongo = create_mongo_connection(get_file_creds("mongo_info.txt"))
 conexion_mysql = create_mysql_connection(get_file_creds("mysql_info.txt"))
@@ -95,20 +172,7 @@ def home():
 
 @app.route('/api/recommend/users/<int:id_usuario>', methods=['GET'])
 def recommend(id_usuario):
-    coleccion_users = database_mongo["usuarios"]
-    coleccion_info_users = database_mongo["infotestafinidads"]
-    query_user = { "id_usuario":  id_usuario}
-    info_user_doc = coleccion_info_users.find(query_user)
-
-    user_doc = coleccion_users.find_one( query_user, {"_id" : 0, "password" : 0} )
-    info_doc = coleccion_info_users.find_one(query_user, {"_id": 0})
-
-    response = user_doc.copy()
-    response.update(info_doc)
-    # insertar usuario en mysql-analitico
-    # generar dataframe
-
-    # recomendacion
+    response = ejecutar_recomendacion(conexion_mysql, id_usuario, 10)
     return jsonify(response)
 
 
