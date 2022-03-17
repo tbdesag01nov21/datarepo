@@ -93,16 +93,16 @@ def get_datos_mysql(conexion_mysql):
     return df
 
 
-def obtener_usuarios_similares(matrix_df, knn_model, user, n=5):
+def obtener_usuarios_similares(matrix_df, knn_model, user, num_recomendaciones):
     # input a esta función es el ID del usuario y el número de top usuarios que quieres que el modelo considere
     # número de usuarios se traduce en el valor que asignamos a n aquí
-    knn_input = np.asarray([matrix_df.values[user - 1]])
-    distances, indices = knn_model.kneighbors(knn_input, n_neighbors=n + 1)
+    knn_input = np.asarray([matrix_df.values[user - 1001]])
+    distances, indices = knn_model.kneighbors(knn_input, n_neighbors=num_recomendaciones + 1)
     result = {}
     ids_usuario = []
 
     for i in range(1, len(distances[0])):
-        ids_usuario.append(indices[0][i] + 1)
+        ids_usuario.append(indices[0][i] + 1001)
 
     for i, id in enumerate(ids_usuario):
         result[str(i+1)] = str(id)
