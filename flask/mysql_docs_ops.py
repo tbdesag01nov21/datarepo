@@ -235,13 +235,15 @@ def check_id_usuario(conexion_mysql, tabla, json_usuario):
     id_usuario = json_usuario['id_usuario']
     cursor = conexion_mysql.cursor()
     command = "select id_usuario from users where id_usuario={};".format(id_usuario)
-    cursor.execute(command)
-    records = cursor.fetchone()
-    if type(records) == tuple:
-        return True
-    else:
+    try:
+        cursor.execute(command)
+        records = cursor.fetchone()
+        if type(records) == tuple:
+            return True
+        else:
+            return False
+    except:
         return False
-
 
 if __name__ == "__main__":
     print(os.getcwd())

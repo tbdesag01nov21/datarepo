@@ -152,7 +152,12 @@ def home():
 
 @app.route('/api/recommend/users/<int:id_usuario>', methods=['GET'])
 def recommend(id_usuario):
-    response = ejecutar_recomendacion(conexion_mysql, id_usuario, 30)
+    response = {}
+    response['error'] = 'No existe el usuario ' + str(id_usuario)
+    param_id_usuario = {'id_usuario' : id_usuario}
+    if analitico.check_id_usuario(conexion_mysql, 'users', param_id_usuario):
+        response = ejecutar_recomendacion(conexion_mysql, id_usuario, 30)
+
     return jsonify(response)
 
 @app.route('/api/recommend/users/update/<int:id_usuario>', methods=['GET'])
